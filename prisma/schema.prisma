@@ -1,0 +1,88 @@
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "postgresql"; url = env("DATABASE_URL") }
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  role      String   @default("student")
+  createdAt DateTime @default(now())
+  student   StudentProfile?
+}
+
+model StudentProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  yearLevel   String   @default("Year 10")
+  school      String?
+  user        User     @relation(fields: [userId], references: [id])
+  assessments Assessment[]
+  attempts    QuizAttempt[]
+  threads     TutorThread[]
+  uploads     UploadedFile[]
+  reflections Reflection[]
+}
+
+model Subject {
+  id    String @id @default(cuid())
+  key   String @unique
+  name  String
+  level String
+  assessments Assessment[]
+  attempts    QuizAttempt[]
+}
+
+model Assessment {
+  id         String   @id @default(cuid())
+  studentId  String
+  subjectId  String
+  title      String
+  score      Float?
+  maxScore   Float?
+  weakAreas  String[]
+  teacherNotes String?
+  takenAt    DateTime @default(now())
+  student    StudentProfile @relation(fields: [studentId], references: [id])
+  subject    Subject        @relation(fields: [subjectId], references: [id])
+}
+
+model QuizAttempt {
+  id         String   @id @default(cuid())
+  studentId  String
+  subjectId  String
+  difficulty String
+  score      Float
+  detail     Json
+  createdAt  DateTime @default(now())
+  student    StudentProfile @relation(fields: [studentId], references: [id])
+  subject    Subject        @relation(fields: [subjectId], references: [id])
+}
+
+model TutorThread {
+  id        String   @id @default(cuid())
+  studentId String
+  topic     String?
+  messages  Json
+  createdAt DateTime @default(now())
+  student   StudentProfile @relation(fields: [studentId], references: [id])
+}
+
+model UploadedFile {
+  id         String   @id @default(cuid())
+  studentId  String
+  filename   String
+  url        String?
+  parsedText String?
+  status     String   @default("queued")
+  createdAt  DateTime @default(now())
+  student    StudentProfile @relation(fields: [studentId], references: [id])
+}
+
+model Reflection {
+  id        String   @id @default(cuid())
+  studentId String
+  subject   String?
+  content   String
+  createdAt DateTime @default(now())
+  student   StudentProfile @relation(fields: [studentId], references: [id])
+}

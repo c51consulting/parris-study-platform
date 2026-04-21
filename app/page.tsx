@@ -1,4 +1,5 @@
 'use client';
+import { TutorChat } from './tutor-chat';
 import { useState } from 'react';
 
 const SUBJECTS = [
@@ -52,7 +53,7 @@ export default function Home() {
         )}
         {tab==='Quizzes' && <Empty text="Adaptive quizzes by subject and difficulty. Connect OPENAI_API_KEY to enable AI question generation." />}
         {tab==='Assessments' && <Empty text="Upload test results and teacher comments. Weak areas are auto-tagged to syllabus strands." />}
-        {tab==='Tutor' && <Empty text="Professional tutor chat grounded in Victorian syllabus command terms (analyse, evaluate, justify)." />}
+        {tab==='Tutor' && <TutorChat />}
         {tab==='Progress' && <Empty text="Mastery map and achievement + progress view across all subjects." />}
       </section>
     </main>
