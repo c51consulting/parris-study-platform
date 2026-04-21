@@ -10,7 +10,7 @@ export async function POST(req: Request) {
   const result = streamText({
     model: openai('gpt-4o-mini'),
     system: SYSTEM,
-    messages: convertToModelMessages(messages),
+    messages: await convertToModelMessages(messages),
   });
   return result.toUIMessageStreamResponse();
 }
