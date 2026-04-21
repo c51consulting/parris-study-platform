@@ -27,6 +27,7 @@ model StudentProfile {
   threads     TutorThread[]
   uploads     UploadedFile[]
   reflections Reflection[]
+  summary     LearnerSummary?
 }
 
 model Subject {
@@ -91,4 +92,33 @@ model Reflection {
   content   String
   createdAt DateTime @default(now())
   student   StudentProfile @relation(fields: [studentId], references: [id])
+}
+
+model CurriculumDescriptor {
+  id         String   @id @default(cuid())
+  code       String   @unique
+  subject    String
+  yearLevel  String
+  strand     String
+  substrand  String?
+  text       String
+  keywords   String[]
+  bloom      String?
+  source     String   @default("VCAA")
+  createdAt  DateTime @default(now())
+  @@index([subject, yearLevel])
+  @@index([strand])
+}
+
+model LearnerSummary {
+  id             String   @id @default(cuid())
+  studentId      String   @unique
+  strengths      String[]
+  weakAreas      String[]
+  preferredStyle String   @default("worked-example")
+  vocabLevel     String   @default("year-10")
+  notes          String?
+  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now())
+  student        StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
 }
