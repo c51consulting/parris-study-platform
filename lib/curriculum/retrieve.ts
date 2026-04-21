@@ -1,4 +1,4 @@
-import { DESCRIPTORS, DescriptorSeed } from './seed';
+import { DESCRIPTORS, type DescriptorSeed } from './seed';
 
 export type Descriptor = DescriptorSeed;
 

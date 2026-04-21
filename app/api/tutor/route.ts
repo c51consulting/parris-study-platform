@@ -29,8 +29,7 @@ export async function POST(req: Request) {
   const lastUser = [...messages].reverse().find((m) => m.role === 'user');
   const query =
     (lastUser?.parts ?? [])
-      .map((p: any) => (p.type === 'text' ? p.text : ''))
-      .join(' ')
+      .map((p) => (p.type === 'text' ? (p as { type: 'text'; text: string }).text : ''))      .join(' ')
       .slice(0, 500) || '';
 
   const descriptors = retrieveDescriptors({ subject, yearLevel, query, limit: 6 });
