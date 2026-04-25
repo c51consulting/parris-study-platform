@@ -11,10 +11,10 @@ const QuestionSchema = z.object({
   questions: z.array(
     z.object({
       question: z.string(),
-      options: z.array(z.string()).length(4),
+      options: z.array(z.string()).min(2).max(6),
       answer: z.string(),
       explanation: z.string(),
-      vcaaCode: z.string().optional(),
+      vcaaCode: z.string().nullish().transform(v => v ?? undefined),
     })
   ),
 });
