@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://parris-study-platform.vercel.app/sitemap.xml
