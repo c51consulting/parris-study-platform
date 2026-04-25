@@ -7,14 +7,16 @@ import { retrieveDescriptors, formatDescriptorsForPrompt } from '@/lib/curriculu
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 
+// OpenAI structured outputs require ALL properties to be in `required`.
+// So we keep the schema flat with no optional fields.
 const QuestionSchema = z.object({
   questions: z.array(
     z.object({
       question: z.string(),
-      options: z.array(z.string()).min(2).max(6),
+      options: z.array(z.string()),
       answer: z.string(),
       explanation: z.string(),
-      vcaaCode: z.string().optional().default(''),
+      code: z.string(), // VCAA descriptor code, e.g. "VCMNA329" — always required
     })
   ),
 });
@@ -49,17 +51,17 @@ Generate exactly ${count} multiple-choice questions for the following:
 - Subject: ${subject}
 - Difficulty: ${difficulty} (target ${bloomTarget})
 
-Use the VCAA curriculum descriptors below as your source of truth. Each question must be grounded in at least one descriptor.
+Use the VCAA curriculum descriptors below as your source of truth.
 
 VCAA DESCRIPTORS:
 ${context}
 
-Requirements:
-- Each question must have exactly 4 options. The "options" array must contain exactly 4 strings (do NOT include letter prefixes like A., B., etc. — just the text).
-- The "answer" field must exactly match one of the 4 option strings.
-- The "explanation" must be 1–2 sentences explaining why the answer is correct.
-- The "vcaaCode" must be the relevant descriptor code string (e.g. "VCMNA329"). Always provide this field.
-- Questions must be clearly worded and unambiguous.
+Requirements for each question:
+- "question": a clear, unambiguous question string
+- "options": an array of exactly 4 strings (no letter prefixes — just the answer text)
+- "answer": must exactly match one of the 4 option strings
+- "explanation": 1–2 sentences explaining why the answer is correct
+- "code": the VCAA descriptor code this question is based on (e.g. "PSY-U1-AoS1-1"). Use the codes from the descriptors above. If none match, use "VCAA".
 - Do NOT repeat questions.`;
 
     const result = await generateObject({
@@ -68,10 +70,13 @@ Requirements:
       prompt,
     });
 
-    // Clean up vcaaCode — remove empty strings
+    // Reshape to the format the frontend expects
     const questions = result.object.questions.map(q => ({
-      ...q,
-      vcaaCode: q.vcaaCode || undefined,
+      question: q.question,
+      options: q.options,
+      answer: q.answer,
+      explanation: q.explanation,
+      vcaaCode: q.code !== 'VCAA' ? q.code : undefined,
     }));
 
     return NextResponse.json({ questions });
