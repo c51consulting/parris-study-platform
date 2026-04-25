@@ -14,7 +14,7 @@ const QuestionSchema = z.object({
       options: z.array(z.string()).min(2).max(6),
       answer: z.string(),
       explanation: z.string(),
-      vcaaCode: z.string().nullish().transform(v => v ?? undefined),
+      vcaaCode: z.string().optional().default(''),
     })
   ),
 });
@@ -37,9 +37,9 @@ export async function POST(req: NextRequest) {
     const context = formatDescriptorsForPrompt(descriptors);
 
     const bloomMap: Record<string, string> = {
-      Foundation: 'recall and understand (Bloom\'s levels 1–2)',
-      Standard: 'apply and analyse (Bloom\'s levels 3–4)',
-      Advanced: 'evaluate and create (Bloom\'s levels 5–6)',
+      Foundation: "recall and understand (Bloom's levels 1–2)",
+      Standard: "apply and analyse (Bloom's levels 3–4)",
+      Advanced: "evaluate and create (Bloom's levels 5–6)",
     };
     const bloomTarget = bloomMap[difficulty] ?? 'apply and analyse';
 
@@ -55,10 +55,10 @@ VCAA DESCRIPTORS:
 ${context}
 
 Requirements:
-- Each question must have exactly 4 options (A, B, C, D style content — do NOT include the letter prefix, just the text).
-- The "answer" field must exactly match one of the options strings.
-- The "explanation" must be 1–2 sentences explaining why the answer is correct and referencing the concept.
-- The "vcaaCode" should be the relevant descriptor code (e.g. VCMNA329).
+- Each question must have exactly 4 options. The "options" array must contain exactly 4 strings (do NOT include letter prefixes like A., B., etc. — just the text).
+- The "answer" field must exactly match one of the 4 option strings.
+- The "explanation" must be 1–2 sentences explaining why the answer is correct.
+- The "vcaaCode" must be the relevant descriptor code string (e.g. "VCMNA329"). Always provide this field.
 - Questions must be clearly worded and unambiguous.
 - Do NOT repeat questions.`;
 
@@ -68,7 +68,13 @@ Requirements:
       prompt,
     });
 
-    return NextResponse.json(result.object);
+    // Clean up vcaaCode — remove empty strings
+    const questions = result.object.questions.map(q => ({
+      ...q,
+      vcaaCode: q.vcaaCode || undefined,
+    }));
+
+    return NextResponse.json({ questions });
   } catch (err: unknown) {
     console.error('[quiz] error:', err);
     const message = err instanceof Error ? err.message : 'Unknown error';
