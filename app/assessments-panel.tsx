@@ -3,9 +3,9 @@ import { useState, useRef } from 'react';
 
 interface AssessmentResult {
   filename: string;
-  score?: number;
-  maxScore?: number;
-  percentage?: number;
+  score?: number | null;
+  maxScore?: number | null;
+  percentage?: number | null;
   weakAreas: string[];
   strengths: string[];
   teacherNotes?: string;
@@ -25,6 +25,8 @@ export function AssessmentsPanel() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [dragOver, setDragOver] = useState(false);
+  // Staged file — selected but not yet submitted
+  const [stagedFile, setStagedFile] = useState<File | null>(null);
   const [assessments, setAssessments] = useState<UploadedAssessment[]>(() => {
     if (typeof window === 'undefined') return [];
     try {
@@ -50,8 +52,8 @@ export function AssessmentsPanel() {
     localStorage.setItem('parris_assessments', JSON.stringify(updated));
   }
 
-  async function handleFile(file: File) {
-    if (!file) return;
+  /** Stage a file for review before analysis */
+  function stageFile(file: File) {
     const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'text/plain'];
     if (!allowed.includes(file.type)) {
       setError('Unsupported file type. Please upload a PDF, image (JPG/PNG), or text file.');
@@ -61,12 +63,18 @@ export function AssessmentsPanel() {
       setError('File too large. Maximum size is 4 MB.');
       return;
     }
+    setError('');
+    setStagedFile(file);
+  }
 
+  /** Submit the staged file for analysis */
+  async function analyseFile() {
+    if (!stagedFile) return;
     setUploading(true);
     setError('');
     try {
       const form = new FormData();
-      form.append('file', file);
+      form.append('file', stagedFile);
       if (teacherNotes) form.append('teacherNotes', teacherNotes);
       if (selectedSubject) form.append('subject', selectedSubject);
 
@@ -79,11 +87,12 @@ export function AssessmentsPanel() {
 
       const newEntry: UploadedAssessment = {
         id: crypto.randomUUID(),
-        filename: file.name,
+        filename: stagedFile.name,
         uploadedAt: new Date().toISOString(),
         result: data.analysis ?? undefined,
       };
       saveAssessments([newEntry, ...assessments]);
+      setStagedFile(null);
       setTeacherNotes('');
       setSelectedSubject('');
       if (fileRef.current) fileRef.current.value = '';
@@ -98,11 +107,36 @@ export function AssessmentsPanel() {
     e.preventDefault();
     setDragOver(false);
     const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
+    if (file) stageFile(file);
   }
 
   function removeAssessment(id: string) {
     saveAssessments(assessments.filter(a => a.id !== id));
+  }
+
+  /** Render the percentage bar + label, handling null gracefully */
+  function renderScore(pct: number | null | undefined) {
+    if (pct === null || pct === undefined) {
+      return (
+        <div className="flex items-center gap-2">
+          <div className="flex-1 bg-slate-100 rounded-full h-2" role="progressbar" aria-valuenow={0} aria-valuemin={0} aria-valuemax={100}>
+            <div className="h-2 rounded-full bg-slate-300" style={{ width: '0%' }} />
+          </div>
+          <span className="text-xs font-medium text-slate-400 w-10 text-right">N/A</span>
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-center gap-2">
+        <div className="flex-1 bg-slate-100 rounded-full h-2" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+          <div
+            className={`h-2 rounded-full ${pct >= 70 ? 'bg-green-500' : pct >= 50 ? 'bg-amber-400' : 'bg-red-400'}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <span className="text-xs font-medium text-slate-600 w-10 text-right">{pct}%</span>
+      </div>
+    );
   }
 
   return (
@@ -123,6 +157,7 @@ export function AssessmentsPanel() {
               id="assessment-subject"
               value={selectedSubject}
               onChange={e => setSelectedSubject(e.target.value)}
+              onInput={e => setSelectedSubject((e.target as HTMLSelectElement).value)}
               className="w-full border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-400"
               aria-label="Select subject for assessment"
             >
@@ -146,38 +181,74 @@ export function AssessmentsPanel() {
           </div>
         </div>
 
-        <div
-          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={handleDrop}
-          className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${dragOver ? 'border-slate-500 bg-slate-50' : 'border-slate-200 hover:border-slate-300'}`}
-          role="button"
-          aria-label="Drop zone for file upload"
-          tabIndex={0}
-          onKeyDown={e => e.key === 'Enter' && fileRef.current?.click()}
-        >
-          <svg className="mx-auto h-10 w-10 text-slate-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-          </svg>
-          <p className="text-sm text-slate-600 mb-1">Drag & drop your file here, or</p>
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            className="text-sm font-medium text-slate-900 underline underline-offset-2 hover:text-slate-600"
-            aria-label="Browse to select a file"
+        {/* Drop zone — shown when no file is staged yet */}
+        {!stagedFile && (
+          <div
+            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+            className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${dragOver ? 'border-slate-500 bg-slate-50' : 'border-slate-200 hover:border-slate-300'}`}
+            role="button"
+            aria-label="Drop zone for file upload"
+            tabIndex={0}
+            onKeyDown={e => e.key === 'Enter' && fileRef.current?.click()}
           >
-            browse to select
-          </button>
-          <p className="text-xs text-slate-400 mt-2">PDF, JPG, PNG, or TXT · max 4 MB</p>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".pdf,.jpg,.jpeg,.png,.webp,.txt"
-            className="hidden"
-            onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
-            aria-label="File input"
-          />
-        </div>
+            <svg className="mx-auto h-10 w-10 text-slate-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            <p className="text-sm text-slate-600 mb-1">Drag &amp; drop your file here, or</p>
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="text-sm font-medium text-slate-900 underline underline-offset-2 hover:text-slate-600"
+              aria-label="Browse to select a file"
+            >
+              browse to select
+            </button>
+            <p className="text-xs text-slate-400 mt-2">PDF, JPG, PNG, or TXT · max 10 MB</p>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.webp,.txt"
+              className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) stageFile(f); }}
+              aria-label="File input"
+            />
+          </div>
+        )}
+
+        {/* Staged file preview + Analyse button */}
+        {stagedFile && !uploading && (
+          <div className="border rounded-xl p-4 bg-slate-50 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <svg className="h-8 w-8 text-slate-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-slate-900 truncate">{stagedFile.name}</p>
+                <p className="text-xs text-slate-400">{(stagedFile.size / 1024).toFixed(0)} KB · ready to analyse</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => { setStagedFile(null); if (fileRef.current) fileRef.current.value = ''; }}
+                className="text-xs text-slate-400 hover:text-red-400 transition-colors"
+                aria-label="Remove selected file"
+              >
+                ✕
+              </button>
+              <button
+                type="button"
+                onClick={analyseFile}
+                className="px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-medium hover:bg-slate-700 transition-colors"
+                aria-label="Analyse this assessment"
+              >
+                Analyse Assessment
+              </button>
+            </div>
+          </div>
+        )}
 
         {uploading && (
           <div className="mt-4 flex items-center gap-2 text-sm text-slate-600" role="status" aria-live="polite">
@@ -219,17 +290,8 @@ export function AssessmentsPanel() {
                 </div>
                 {a.result && (
                   <div className="mt-3 space-y-2">
-                    {a.result.percentage !== undefined && (
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 bg-slate-100 rounded-full h-2" role="progressbar" aria-valuenow={a.result.percentage} aria-valuemin={0} aria-valuemax={100}>
-                          <div
-                            className={`h-2 rounded-full ${a.result.percentage >= 70 ? 'bg-green-500' : a.result.percentage >= 50 ? 'bg-amber-400' : 'bg-red-400'}`}
-                            style={{ width: `${a.result.percentage}%` }}
-                          />
-                        </div>
-                        <span className="text-xs font-medium text-slate-600 w-10 text-right">{a.result.percentage}%</span>
-                      </div>
-                    )}
+                    {/* Score bar — always rendered, null handled gracefully */}
+                    {renderScore(a.result.percentage)}
                     {a.result.weakAreas.length > 0 && (
                       <div>
                         <p className="text-xs font-medium text-slate-500 mb-1">Weak areas</p>

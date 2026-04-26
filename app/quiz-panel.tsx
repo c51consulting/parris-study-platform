@@ -135,7 +135,7 @@ export function QuizPanel() {
             Question {quiz.current + 1} of {quiz.questions.length}
           </span>
           <span className="text-xs bg-slate-100 px-2 py-1 rounded-full text-slate-600">
-            Score: {quiz.score}/{quiz.current}
+            Score: {quiz.score}/{quiz.questions.length}
           </span>
         </div>
         {q.vcaaCode && (
@@ -206,6 +206,7 @@ export function QuizPanel() {
             id="quiz-subject"
             value={subject}
             onChange={e => setSubject(e.target.value)}
+            onInput={e => setSubject((e.target as HTMLSelectElement).value)}
             className="w-full border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-400"
             aria-label="Select subject"
           >
