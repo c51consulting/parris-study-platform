@@ -19,6 +19,18 @@ const AnalysisSchema = z.object({
   teacherNotesSummary: z.string().optional(),
 });
 
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  try {
+    const { extractText, getDocumentProxy } = await import('unpdf');
+    const pdf = await getDocumentProxy(new Uint8Array(buffer));
+    const { text } = await extractText(pdf, { mergePages: true });
+    return Array.isArray(text) ? text.join('\n') : (text || '');
+  } catch (e) {
+    console.error('[upload] pdf extract failed:', e);
+    return '';
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     if (!process.env.OPENAI_API_KEY) {
@@ -67,8 +79,13 @@ export async function POST(req: NextRequest) {
       const buf = Buffer.from(await file.arrayBuffer());
       imageDataUrl = `data:${file.type};base64,${buf.toString('base64')}`;
     } else if (isPdf) {
-      // PDF text extraction is heavy; pass metadata + teacher notes as context.
-      textContent = `[PDF uploaded: ${file.name}, ${Math.round(file.size / 1024)}KB. Full text extraction not available in this build.]`;
+      const buf = Buffer.from(await file.arrayBuffer());
+      const extracted = await extractPdfText(buf);
+      if (extracted && extracted.trim().length > 0) {
+        textContent = extracted.slice(0, 12000);
+      } else {
+        textContent = `[PDF: ${file.name}, ${Math.round(file.size / 1024)}KB. Text could not be extracted; analyse from filename, subject, and teacher notes.]`;
+      }
     } else {
       return NextResponse.json(
         { error: `Unsupported file type: ${file.type || 'unknown'}. Use PDF, JPG, PNG, or TXT.` },
