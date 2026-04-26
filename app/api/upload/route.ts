@@ -9,14 +9,14 @@ export const maxDuration = 60;
 const MAX_BYTES = 4 * 1024 * 1024; // 4MB safe limit for Vercel serverless body
 
 const AnalysisSchema = z.object({
-  score: z.number().optional(),
-  maxScore: z.number().optional(),
-  percentage: z.number().optional(),
-  weakAreas: z.array(z.string()).default([]),
-  strengths: z.array(z.string()).default([]),
-  syllabusStrands: z.array(z.string()).default([]),
-  recommendations: z.array(z.string()).default([]),
-  teacherNotesSummary: z.string().optional(),
+  score: z.number().nullable(),
+  maxScore: z.number().nullable(),
+  percentage: z.number().nullable(),
+  weakAreas: z.array(z.string()).nullable(),
+  strengths: z.array(z.string()).nullable(),
+  syllabusStrands: z.array(z.string()).nullable(),
+  recommendations: z.array(z.string()).nullable(),
+  teacherNotesSummary: z.string().nullable(),
 });
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
