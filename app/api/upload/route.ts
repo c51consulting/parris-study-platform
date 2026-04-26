@@ -4,22 +4,40 @@ import { generateObject } from 'ai';
 import { z } from 'zod';
 
 export const runtime = 'nodejs';
-export const maxDuration = 30;
+export const maxDuration = 60;
+
+const MAX_BYTES = 4 * 1024 * 1024; // 4MB safe limit for Vercel serverless body
 
 const AnalysisSchema = z.object({
   score: z.number().optional(),
   maxScore: z.number().optional(),
   percentage: z.number().optional(),
-  weakAreas: z.array(z.string()),
-  strengths: z.array(z.string()),
-  syllabusStrands: z.array(z.string()),
-  recommendations: z.array(z.string()),
+  weakAreas: z.array(z.string()).default([]),
+  strengths: z.array(z.string()).default([]),
+  syllabusStrands: z.array(z.string()).default([]),
+  recommendations: z.array(z.string()).default([]),
   teacherNotesSummary: z.string().optional(),
 });
 
 export async function POST(req: NextRequest) {
   try {
-    const form = await req.formData();
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json(
+        { error: 'AI not configured: OPENAI_API_KEY missing on the server.' },
+        { status: 503 }
+      );
+    }
+
+    let form: FormData;
+    try {
+      form = await req.formData();
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid upload. Please retry with a smaller file (max 4MB).' },
+        { status: 400 }
+      );
+    }
+
     const file = form.get('file') as File | null;
     const teacherNotes = (form.get('teacherNotes') as string) || '';
     const subject = (form.get('subject') as string) || '';
@@ -28,39 +46,62 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // Read file content for text-based files
-    let fileContent = '';
-    if (file.type === 'text/plain') {
-      fileContent = await file.text();
-    } else {
-      // For PDFs and images, we use the filename and teacher notes as context
-      fileContent = `[File: ${file.name}, Type: ${file.type}, Size: ${Math.round(file.size / 1024)}KB]`;
+    if (file.size > MAX_BYTES) {
+      return NextResponse.json(
+        { error: `File too large (${Math.round(file.size / 1024 / 1024)}MB). Max 4MB on this plan.` },
+        { status: 413 }
+      );
     }
 
     const subjectLabel = subject || 'Victorian Curriculum / VCE';
+    const isImage = file.type.startsWith('image/');
+    const isText = file.type === 'text/plain' || file.name.toLowerCase().endsWith('.txt');
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 
-    const prompt = `You are an expert Victorian Curriculum and VCE assessment analyst.
+    let textContent = '';
+    let imageDataUrl: string | null = null;
 
-A student has uploaded an assessment file for analysis.
+    if (isText) {
+      textContent = (await file.text()).slice(0, 12000);
+    } else if (isImage) {
+      const buf = Buffer.from(await file.arrayBuffer());
+      imageDataUrl = `data:${file.type};base64,${buf.toString('base64')}`;
+    } else if (isPdf) {
+      // PDF text extraction is heavy; pass metadata + teacher notes as context.
+      textContent = `[PDF uploaded: ${file.name}, ${Math.round(file.size / 1024)}KB. Full text extraction not available in this build.]`;
+    } else {
+      return NextResponse.json(
+        { error: `Unsupported file type: ${file.type || 'unknown'}. Use PDF, JPG, PNG, or TXT.` },
+        { status: 415 }
+      );
+    }
 
-File: ${file.name}
-Subject context: ${subjectLabel}
+    const systemPrompt = `You are an expert Victorian Curriculum and VCE assessment analyst. Analyse the uploaded student assessment and return a structured analysis. Map weak areas to VCAA syllabus strands (e.g. "Number and Algebra", "Research Methods", "Reading and Viewing"). Provide 2-3 actionable recommendations. If you cannot determine a numeric score, omit score fields. Always return the required arrays (use [] if truly nothing).`;
+
+    const userText = `File: ${file.name}
+Subject: ${subjectLabel}
 Teacher comments: ${teacherNotes || 'None provided'}
-File content/metadata: ${fileContent.slice(0, 2000)}
 
-Based on the filename, teacher comments, and any available content, provide a structured assessment analysis.
+Content:
+${textContent || '(see attached image)'}`;
 
-If you cannot determine specific scores from the content, omit score fields.
-Identify likely weak areas and strengths based on the subject and any available information.
-Map weak areas to VCAA syllabus strands (e.g. "Number and Algebra", "Research Methods", "Reading and Viewing").
-Provide 2-3 actionable recommendations for improvement.
-
-Be helpful and constructive. If information is limited, make reasonable inferences based on the subject area.`;
+    const messages = isImage
+      ? [
+          {
+            role: 'user' as const,
+            content: [
+              { type: 'text' as const, text: userText },
+              { type: 'image' as const, image: imageDataUrl! },
+            ],
+          },
+        ]
+      : [{ role: 'user' as const, content: userText }];
 
     const result = await generateObject({
       model: openai('gpt-4o-mini'),
       schema: AnalysisSchema,
-      prompt,
+      system: systemPrompt,
+      messages,
     });
 
     return NextResponse.json({
@@ -72,6 +113,9 @@ Be helpful and constructive. If information is limited, make reasonable inferenc
   } catch (err: unknown) {
     console.error('[upload] error:', err);
     const message = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: `Analysis failed: ${message}` },
+      { status: 500 }
+    );
   }
 }
