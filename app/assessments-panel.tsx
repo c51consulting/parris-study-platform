@@ -57,8 +57,8 @@ export function AssessmentsPanel() {
       setError('Unsupported file type. Please upload a PDF, image (JPG/PNG), or text file.');
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      setError('File too large. Maximum size is 10 MB.');
+    if (file.size > 4 * 1024 * 1024) {
+      setError('File too large. Maximum size is 4 MB.');
       return;
     }
 
@@ -168,7 +168,7 @@ export function AssessmentsPanel() {
           >
             browse to select
           </button>
-          <p className="text-xs text-slate-400 mt-2">PDF, JPG, PNG, or TXT · max 10 MB</p>
+          <p className="text-xs text-slate-400 mt-2">PDF, JPG, PNG, or TXT · max 4 MB</p>
           <input
             ref={fileRef}
             type="file"
