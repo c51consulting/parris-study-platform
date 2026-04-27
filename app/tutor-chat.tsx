@@ -2,6 +2,8 @@
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 const STORAGE_KEY = 'parris_tutor_history';
 const MAX_STORED = 50;
@@ -10,6 +12,94 @@ interface StagedFile {
   filename: string;
   text: string;
   type: string;
+}
+
+/** Renders AI tutor text as clean formatted markdown */
+function TutorMessage({ text }: { text: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        // Paragraphs — small gap between them
+        p: ({ children }) => (
+          <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>
+        ),
+        // Bold
+        strong: ({ children }) => (
+          <strong className="font-semibold text-slate-900">{children}</strong>
+        ),
+        // Italic
+        em: ({ children }) => (
+          <em className="italic">{children}</em>
+        ),
+        // Unordered list
+        ul: ({ children }) => (
+          <ul className="list-disc list-outside ml-4 mb-2 space-y-0.5">{children}</ul>
+        ),
+        // Ordered list
+        ol: ({ children }) => (
+          <ol className="list-decimal list-outside ml-4 mb-2 space-y-0.5">{children}</ol>
+        ),
+        li: ({ children }) => (
+          <li className="leading-relaxed">{children}</li>
+        ),
+        // Headings — scale down so they don't dominate the chat bubble
+        h1: ({ children }) => (
+          <h3 className="font-bold text-base mb-1 mt-2 first:mt-0">{children}</h3>
+        ),
+        h2: ({ children }) => (
+          <h4 className="font-semibold text-sm mb-1 mt-2 first:mt-0">{children}</h4>
+        ),
+        h3: ({ children }) => (
+          <h5 className="font-semibold text-sm mb-1 mt-1.5 first:mt-0">{children}</h5>
+        ),
+        // Inline code
+        code: ({ children, className }) => {
+          const isBlock = className?.includes('language-');
+          if (isBlock) {
+            return (
+              <code className="block bg-slate-200 text-slate-800 rounded-lg px-3 py-2 text-xs font-mono my-2 overflow-x-auto whitespace-pre">
+                {children}
+              </code>
+            );
+          }
+          return (
+            <code className="bg-slate-200 text-slate-800 rounded px-1 py-0.5 text-xs font-mono">
+              {children}
+            </code>
+          );
+        },
+        // Code block wrapper — strip default pre padding
+        pre: ({ children }) => (
+          <pre className="my-2">{children}</pre>
+        ),
+        // Block quote (used for definitions / VCAA citations)
+        blockquote: ({ children }) => (
+          <blockquote className="border-l-2 border-slate-400 pl-3 italic text-slate-600 my-2">
+            {children}
+          </blockquote>
+        ),
+        // Horizontal rule
+        hr: () => <hr className="border-slate-300 my-3" />,
+        // Tables (GFM)
+        table: ({ children }) => (
+          <div className="overflow-x-auto my-2">
+            <table className="text-xs border-collapse w-full">{children}</table>
+          </div>
+        ),
+        th: ({ children }) => (
+          <th className="border border-slate-300 bg-slate-200 px-2 py-1 text-left font-semibold">
+            {children}
+          </th>
+        ),
+        td: ({ children }) => (
+          <td className="border border-slate-300 px-2 py-1">{children}</td>
+        ),
+      }}
+    >
+      {text}
+    </ReactMarkdown>
+  );
 }
 
 export function TutorChat() {
@@ -66,7 +156,6 @@ export function TutorChat() {
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    // Reset so same file can be re-selected after removal
     e.target.value = '';
     if (!file) return;
 
@@ -105,9 +194,6 @@ export function TutorChat() {
 
     setError('');
 
-    // Build the message: if a file is staged, prepend its extracted content
-    // as a labelled context block. The tutor reads it as conversation context —
-    // no assessment analysis or grading is triggered.
     let messageText = trimmed;
     if (stagedFile) {
       const header = `[Attached file: ${stagedFile.filename}]\n\`\`\`\n${stagedFile.text}\n\`\`\``;
@@ -193,21 +279,27 @@ export function TutorChat() {
 
         {messages.map(m => {
           const parts = m.parts ?? [];
+          const isUser = m.role === 'user';
+
           return (
             <div
               key={m.id}
-              className={`flex gap-3 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}
               role="article"
-              aria-label={`${m.role === 'user' ? 'You' : 'Tutor'}: message`}
+              aria-label={`${isUser ? 'You' : 'Tutor'}: message`}
             >
-              {m.role !== 'user' && (
-                <div className="w-7 h-7 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs flex-shrink-0 mt-0.5" aria-hidden="true">
+              {!isUser && (
+                <div
+                  className="w-7 h-7 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs flex-shrink-0 mt-0.5"
+                  aria-hidden="true"
+                >
                   T
                 </div>
               )}
+
               <div
-                className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
-                  m.role === 'user'
+                className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm ${
+                  isUser
                     ? 'bg-slate-900 text-white rounded-br-sm'
                     : 'bg-slate-100 text-slate-800 rounded-bl-sm'
                 }`}
@@ -216,29 +308,41 @@ export function TutorChat() {
                   if (p.type !== 'text') return null;
                   const rawText = (p as { type: 'text'; text: string }).text;
 
-                  // Detect attached-file messages and render a compact badge
-                  // instead of showing the raw extracted text dump
-                  const attachMatch = rawText.match(
-                    /^\[Attached file: (.+?)\]\n```\n[\s\S]*?\n```\n?\n?([\s\S]*)$/
-                  );
-                  if (attachMatch) {
-                    const [, fname, userMsg] = attachMatch;
-                    return (
-                      <span key={i}>
-                        <span className="inline-flex items-center gap-1.5 bg-white/20 border border-white/30 rounded-lg px-2.5 py-1 text-xs font-medium mb-2 block w-fit">
-                          <span aria-hidden="true">📎</span>
-                          {fname}
+                  // User messages: detect attached-file header and render a badge
+                  if (isUser) {
+                    const attachMatch = rawText.match(
+                      /^\[Attached file: (.+?)\]\n```\n[\s\S]*?\n```\n?\n?([\s\S]*)$/
+                    );
+                    if (attachMatch) {
+                      const [, fname, userMsg] = attachMatch;
+                      return (
+                        <span key={i}>
+                          <span className="inline-flex items-center gap-1.5 bg-white/20 border border-white/30 rounded-lg px-2.5 py-1 text-xs font-medium mb-2 block w-fit">
+                            <span aria-hidden="true">📎</span>
+                            {fname}
+                          </span>
+                          {userMsg && <span className="block mt-1 leading-relaxed">{userMsg}</span>}
                         </span>
-                        {userMsg && <span className="block mt-1">{userMsg}</span>}
+                      );
+                    }
+                    // Plain user message — render as-is (no markdown)
+                    return (
+                      <span key={i} className="leading-relaxed whitespace-pre-wrap">
+                        {rawText}
                       </span>
                     );
                   }
 
-                  return <span key={i}>{rawText}</span>;
+                  // Tutor messages — render as rich markdown
+                  return <TutorMessage key={i} text={rawText} />;
                 })}
               </div>
-              {m.role === 'user' && (
-                <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs flex-shrink-0 mt-0.5" aria-hidden="true">
+
+              {isUser && (
+                <div
+                  className="w-7 h-7 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs flex-shrink-0 mt-0.5"
+                  aria-hidden="true"
+                >
                   Y
                 </div>
               )}
@@ -316,7 +420,6 @@ export function TutorChat() {
 
       {/* Input bar */}
       <div className="border-t px-5 py-3">
-        {/* Hidden native file input */}
         <input
           ref={fileInputRef}
           type="file"
@@ -332,7 +435,6 @@ export function TutorChat() {
           className="flex gap-2 items-center"
           aria-label="Send a message to the tutor"
         >
-          {/* Paperclip / attach button */}
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
@@ -341,7 +443,6 @@ export function TutorChat() {
             aria-label="Attach a file to share with the tutor (PDF, image, or text)"
             title="Attach file"
           >
-            {/* Paperclip SVG */}
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
