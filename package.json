@@ -13,14 +13,16 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.53",
-    "unpdf": "^0.12.1",
     "@ai-sdk/react": "^3.0.170",
     "@prisma/client": "^6.6.0",
+    "@types/pdf-parse": "^1.1.5",
     "ai": "^6.0.168",
     "next": "14.2.35",
+    "pdf-parse": "^2.4.5",
     "prisma": "^6.6.0",
     "react": "^18",
     "react-dom": "^18",
+    "unpdf": "^0.12.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
